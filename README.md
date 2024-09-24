@@ -4,8 +4,9 @@
 
 ### HT-qDotblot: An app for quantifying signals from dot-blot of 96-wellplate
 
-A python application **HT-qDotblot**  is a Qt-based (PySide6) desktop application designed for quantitative analysis of 96-well dot blot images. 
-Dot-blot is a high-throughput, quantitative method designed for the rapid and efficient analysis of protein expression levels. 
+This repository contains a python application named **HT-qDotblot**.
+It is a Qt-based (PySide6) desktop application designed for quantitative analysis of 96-well dot-blot images. 
+Dot-blot is a high-throughput, quantitative method designed for the rapid and efficient analysis of protein expression levels.
 
 
 This application allows you to load your dot-blot image and define a grid over the wells of the blot image. 
@@ -20,18 +21,13 @@ For the experimental protocol, please refer to the paper.
 
 ## Features
 
-- Load and visualize 96-well dot blot images
-- Define a grid by placing corners to align wells with the image
-- Adjust grid position, size, circle size, and grid color
+- Load and visualize 96-well dot-blot images
+- Define a grid by placing corners to align wells on the dot-blot image
+- Adjust grid position, colour, dimensions and well size
 - Measure the intensity of each well and export the results as CSV
 - Ability to zoom in/out and pan the image
 - Save annotated images with grid overlays
 - Load multiple images and switch between them for batch processing
-
-## Getting Started
-
-
-
 
 ## Installation
 
@@ -45,7 +41,7 @@ For the experimental protocol, please refer to the paper.
 - qt-material
 - qtawesome
 
-### Steps
+### Getting Started
 
 1. Clone the repository:
    ```
