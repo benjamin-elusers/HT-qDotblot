@@ -9,9 +9,10 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QMenu, QWidget,  QStat
                                QGroupBox, QVBoxLayout, QHBoxLayout, QSplitter, QSpinBox, 
                                QPushButton, QSlider, QFileDialog, QColorDialog, QLabel,  
                                QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsTextItem,
-                               QListWidget,  QTableWidget, QTableWidgetItem, QToolBar )
-from PySide6.QtCore import Qt, QLineF, QRectF, QPointF, QEvent
-from PySide6.QtGui import QAction, QIcon, QImage, QPixmap, QPen, QColor, QPainter, QCursor, QFontDatabase
+                               QListWidget,  QTableWidget, QTableWidgetItem, QToolBar, QToolTip )
+from PySide6.QtCore import Qt, QLineF, QRectF, QPointF, QEvent, QTimer
+
+from PySide6.QtGui import QAction, QIcon, QImage, QPixmap, QPen, QColor, QPainter, QCursor, QFont, QFontDatabase
 from PySide6.QtUiTools import QUiLoader
 from qt_material import QtStyleTools, apply_stylesheet
 import qtawesome as qta
@@ -43,7 +44,7 @@ class WellGridApp(QMainWindow):
         logger.debug("Initializing WellGridApp.")
         super().__init__()
         self.setWindowTitle("Quantify 96-well dotblot")
-        self.setGeometry(0, 0, 1920, 1360)
+        self.setGeometry(0, 0, 1920, 1080)
 
         # Initialize variables
         self.init_variables()
@@ -97,15 +98,13 @@ class WellGridApp(QMainWindow):
         """Setup the UI elements and layout."""
         logger.debug("Setting up UI components.")
         
-        # Main layout as QSplitter
-        main_layout = QSplitter(Qt.Orientation.Vertical)
-
         # Sidebar (left panel) with fixed width
         sidebar_widget = self.setup_sidebar()
+        sidebar_widget.setMaximumHeight(950)        
 
         # Image widget
         image_widget = QWidget()
-        image_widget.setFixedWidth(900)        
+        image_widget.setMaximumWidth(900)        
         image_group = QGroupBox("Image Section")
         image_layout = QVBoxLayout()
         
@@ -127,7 +126,7 @@ class WellGridApp(QMainWindow):
 
         # Measurement widget
         measurement_widget = QWidget()
-        measurement_widget.setFixedWidth(720)
+        measurement_widget.setMaximumWidth(720)
         measurement_layout = QVBoxLayout()
         measurement_group = QGroupBox("Measurements Section")
         
@@ -153,6 +152,7 @@ class WellGridApp(QMainWindow):
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
+        self.setup_tooltips()
 
     def setup_theme_menu(self):
         """Create a menu for selecting themes."""
@@ -190,6 +190,14 @@ class WellGridApp(QMainWindow):
         sidebar_widget.setFixedWidth(250)
         sidebar_layout = QVBoxLayout()
 
+        # Add a question mark icon button to show all tooltips
+        question_icon = qta.icon('mdi6.help-circle-outline', options=ICON_OPTIONS)
+        self.tooltip_button = QPushButton(question_icon, "Help")
+        #self.tooltip_button.clicked.connect(self.toggle_all_tooltips)
+        self.tooltip_button.clicked.connect(self.toggle_custom_tooltips)
+
+        sidebar_layout.addWidget(self.tooltip_button)
+
         # Image controls
         image_group = QGroupBox("Image Controls")
         image_group.setFixedHeight(200)
@@ -216,7 +224,6 @@ class WellGridApp(QMainWindow):
 
         # Set layout for sidebar widget
         sidebar_widget.setLayout(sidebar_layout)
-
         return sidebar_widget
 
     def setup_image_toolbar(self):
@@ -226,27 +233,27 @@ class WellGridApp(QMainWindow):
 
         # Save button with icon        
         save_icon = qta.icon('mdi6.content-save', options=ICON_OPTIONS)
-        save_button = QPushButton(save_icon, "Save")
-        save_button.clicked.connect(self.save_image)
-        image_toolbar.addWidget(save_button)
+        self.save_image_button = QPushButton(save_icon, "Save")
+        self.save_image_button.clicked.connect(self.save_image)
+        image_toolbar.addWidget(self.save_image_button)
 
         # Zoom in button with icon
         zoomin_icon = qta.icon('mdi6.magnify-plus', options=ICON_OPTIONS)
-        zoom_in_button = QPushButton(zoomin_icon, "Zoom In")
-        zoom_in_button.clicked.connect(self.zoom_in)
-        image_toolbar.addWidget(zoom_in_button)
+        self.zoom_in_button = QPushButton(zoomin_icon, "Zoom In")
+        self.zoom_in_button.clicked.connect(self.zoom_in)
+        image_toolbar.addWidget(self.zoom_in_button)
 
         # Zoom out button with icon
         zoomout_icon = qta.icon('mdi6.magnify-minus', options=ICON_OPTIONS)
-        zoom_out_button = QPushButton(zoomout_icon, "Zoom Out")
-        zoom_out_button.clicked.connect(self.zoom_out)
-        image_toolbar.addWidget(zoom_out_button)
+        self.zoom_out_button = QPushButton(zoomout_icon, "Zoom Out")
+        self.zoom_out_button.clicked.connect(self.zoom_out)
+        image_toolbar.addWidget(self.zoom_out_button)
 
         # Pan button with icon
         pan_icon = qta.icon('mdi6.pan', options=ICON_OPTIONS)
-        pan_button = QPushButton(pan_icon, "Pan")
-        pan_button.clicked.connect(self.toggle_pan_mode)
-        image_toolbar.addWidget(pan_button)
+        self.pan_button = QPushButton(pan_icon, "Pan")
+        self.pan_button.clicked.connect(self.toggle_pan_mode)
+        image_toolbar.addWidget(self.pan_button)
 
         return image_toolbar
 
@@ -313,14 +320,74 @@ class WellGridApp(QMainWindow):
         layout.addWidget(self.measure_button)
 
         # Save as CSV button
-        self.save_button = QPushButton("Save as CSV")
-        self.save_button.clicked.connect(self.save_csv)
-        layout.addWidget(self.save_button)
+        self.save_grid_button = QPushButton("Save as CSV")
+        self.save_grid_button.clicked.connect(self.save_csv)
+        layout.addWidget(self.save_grid_button)
 
         # Reset button
         self.reset_button = QPushButton("Reset")
         self.reset_button.clicked.connect(self.reset_app)
         layout.addWidget(self.reset_button)
+
+    def setup_tooltips(self):
+        # Add tooltips for each UI element
+        self.load_button.setToolTip("Load an image file to analyze.")
+        self.image_list.setToolTip("List of all loaded images ready to display.")
+        self.saturation_slider.setToolTip("Adjust the proportion of saturated pixels in the current selected image.")
+
+        self.define_grid_button.setToolTip("Define the grid by clicking on the three corner wells (e.g. A01, A12, H01)of the imaged plate.")
+        self.roi_radius_slider.setToolTip("Adjust the radius of the region of interest (ROI) drawn around each well.")
+        self.color_button.setToolTip("Change the color of the well ROIs in the grid.")
+        
+        self.left_button.setToolTip("Translate grid to the LEFT by 1 pixel.")
+        self.up_button.setToolTip("Translate grid UP by 1 pixel.")
+        self.right_button.setToolTip("Translate grid to the RIGHT by 1 pixel.")
+        self.down_button.setToolTip("Translate grid DOWN by 1 pixel.")
+
+        self.spacing_increment_input.setToolTip("Set the grid spacing increment between the wells.")
+        #self.increase_button.setToolTip("Increase grid spacing (width|height = horizontal|vertical).")
+        #self.decrease_button.setToolTip("Decrease grid spacing (width|height = horizontal|vertical).")
+
+        self.measure_button.setToolTip("Measure the intensity values of the grid.")
+        self.save_grid_button.setToolTip("Save the grid measurements of the current image to a CSV file.")
+        self.reset_button.setToolTip("Reset the app to its initial state.")
+
+        self.save_image_button.setToolTip("Save the current displayed image.")
+        self.zoom_in_button.setToolTip("Zoom in on the image.")
+        self.zoom_out_button.setToolTip("Zoom out of the image.")
+        self.pan_button.setToolTip("Pan around the image.")
+        self.image_view.setToolTip("Region where the current selected image is displayed.")
+        self.measurements_table.setToolTip("Table to preview the grid measurements on the current image.")
+
+    def clear_tooltips(self):
+        # Add tooltips for each UI element
+        self.load_button.setToolTip("")
+        self.image_list.setToolTip("")
+        self.saturation_slider.setToolTip("")
+
+        self.define_grid_button.setToolTip("")
+        self.roi_radius_slider.setToolTip("")
+        self.color_button.setToolTip("")
+        
+        self.left_button.setToolTip("")
+        self.up_button.setToolTip("")
+        self.right_button.setToolTip("")
+        self.down_button.setToolTip("")
+
+        self.spacing_increment_input.setToolTip("")
+        #self.increase_button.setToolTip("Increase grid spacing (width|height = horizontal|vertical).")
+        #self.decrease_button.setToolTip("Decrease grid spacing (width|height = horizontal|vertical).")
+
+        self.measure_button.setToolTip("")
+        self.save_grid_button.setToolTip("")
+        self.reset_button.setToolTip("")
+
+        self.save_image_button.setToolTip("")
+        self.zoom_in_button.setToolTip("")
+        self.zoom_out_button.setToolTip("")
+        self.pan_button.setToolTip("")
+        self.image_view.setToolTip("")
+        self.measurements_table.setToolTip("")
 
     def connect_mouse_events(self):
         """Connect mouse move event to track coordinates."""
@@ -534,13 +601,13 @@ class WellGridApp(QMainWindow):
         adjust_layout = QHBoxLayout()
         adjust_layout.addWidget(QLabel(f"{label}: "))
 
-        increase_button = QPushButton("+") # ➕ Heavy sign  # ＋ fullwidth
-        increase_button.clicked.connect(lambda: self.adjust_grid_spacing(direction, self.spacing_increment))
-        adjust_layout.addWidget(increase_button)
+        self.increase_button = QPushButton("+") # ➕ Heavy sign  # ＋ fullwidth
+        self.increase_button.clicked.connect(lambda: self.adjust_grid_spacing(direction, self.spacing_increment))
+        adjust_layout.addWidget(self.increase_button)
 
-        decrease_button = QPushButton("−") # ➖ Heavy sign 
-        decrease_button.clicked.connect(lambda: self.adjust_grid_spacing(direction, -self.spacing_increment))
-        adjust_layout.addWidget(decrease_button)
+        self.decrease_button = QPushButton("−") # ➖ Heavy sign 
+        self.decrease_button.clicked.connect(lambda: self.adjust_grid_spacing(direction, -self.spacing_increment))
+        adjust_layout.addWidget(self.decrease_button)
 
         layout.addLayout(adjust_layout)
 
@@ -879,8 +946,57 @@ class WellGridApp(QMainWindow):
         self.measurements_table.setRowCount(0)
         self.measurements_table.setColumnCount(0)
         logger.info("App has been reset to its initial state.")
+    
+    def show_custom_tooltips(self):
+        """Show custom tooltips for all widgets that have them and keep them visible."""
+        logger.info("Showing all tooltips.")
+        self.custom_tooltips = []  # Keep track of the custom tooltips we create
 
+        # Helper function to create custom tooltip for each widget
+        def create_custom_tooltip(widget):
+            if widget.toolTip():  # Only if the widget has a tooltip
+                # Create a label that mimics a tooltip
+                tooltip_label = QLabel(widget.toolTip(), self)
+                tooltip_label.setStyleSheet(
+                    "background-color: teal; color: yellow; border: 1px solid black; padding: 2px;"
+                )
+                tooltip_label.setWindowFlags(Qt.ToolTip)
+                tooltip_label.adjustSize()
 
+                # Position the tooltip at the center of the widget
+                global_pos = widget.mapToGlobal(widget.rect().topRight())
+                tooltip_label.move(global_pos)
+                tooltip_label.show()
+
+                # Keep track of this tooltip label so we can hide it later
+                self.custom_tooltips.append(tooltip_label)
+
+        # Iterate over all children widgets in the application
+        for widget in self.findChildren(QWidget):
+            create_custom_tooltip(widget)
+
+    def hide_custom_tooltips(self):
+        """Hide all custom tooltips by removing them from the screen."""
+        logger.info("Hiding all tooltips.")
+        if hasattr(self, 'custom_tooltips'):
+            # Hide and delete all custom tooltips
+            for tooltip_label in self.custom_tooltips:
+                tooltip_label.hide()
+                tooltip_label.deleteLater()
+            # Clear the list after removing tooltips
+            self.custom_tooltips = []
+
+    def toggle_custom_tooltips(self):
+        """Toggle the display of custom tooltips for all widgets."""
+        if not hasattr(self, 'tooltips_active'):
+            self.tooltips_active = False  # Initialize the state
+        
+        if self.tooltips_active:
+            self.hide_custom_tooltips()
+        else:
+            self.show_custom_tooltips()
+        
+        self.tooltips_active = not self.tooltips_active
 if __name__ == "__main__":
     logger.debug("Starting WellGridApp.")
     app = QApplication(sys.argv)
@@ -889,8 +1005,9 @@ if __name__ == "__main__":
         # Density Scale
         'density_scale': '-1',
         'font_size': '16px',
-        'QLabel' : { 'font-size': '50px' }
     }
+    QToolTip.setFont(QFont('Roboto', 12))
+
     apply_stylesheet(app, theme='dark_teal.xml', extra=extra)
     window = WellGridApp()
     window.show()
