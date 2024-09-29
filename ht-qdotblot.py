@@ -100,7 +100,7 @@ class WellGridApp(QMainWindow):
         
         # Sidebar (left panel) with fixed width
         sidebar_widget = self.setup_sidebar()
-        sidebar_widget.setMaximumHeight(950)        
+        #sidebar_widget.setMaximumHeight(950)        
 
         # Image widget
         image_widget = QWidget()
@@ -200,7 +200,7 @@ class WellGridApp(QMainWindow):
 
         # Image controls
         image_group = QGroupBox("Image Controls")
-        image_group.setFixedHeight(200)
+        #image_group.setFixedHeight(200)
         image_layout = QVBoxLayout()
         self.setup_image_controls(image_layout)
         image_group.setLayout(image_layout)
@@ -1035,7 +1035,7 @@ if __name__ == "__main__":
     # setup stylesheet
     extra = {
         # Density Scale
-        'density_scale': '-1',
+        'density_scale': '-3',
         'font_size': '16px',
     }
     QToolTip.setFont(QFont('Roboto', 12))
