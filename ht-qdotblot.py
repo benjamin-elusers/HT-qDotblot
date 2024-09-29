@@ -8,11 +8,11 @@ import os
 from PySide6.QtWidgets import (QApplication, QMainWindow, QMenu, QWidget,  QStatusBar, 
                                QGroupBox, QVBoxLayout, QHBoxLayout, QSplitter, QSpinBox, 
                                QPushButton, QSlider, QFileDialog, QColorDialog, QLabel,  
-                               QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsTextItem,
+                               QGraphicsView, QGraphicsProxyWidget, QGraphicsScene, QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsTextItem,
                                QListWidget,  QTableWidget, QTableWidgetItem, QToolBar, QToolTip )
 from PySide6.QtCore import Qt, QLineF, QRectF, QPointF, QEvent, QTimer
 
-from PySide6.QtGui import QAction, QIcon, QImage, QPixmap, QPen, QColor, QPainter, QCursor, QFont, QFontDatabase
+from PySide6.QtGui import QAction, QIcon, QImage, QPixmap, QPen, QColor, QPainter, QCursor, QFont, QFontDatabase, QTransform
 from PySide6.QtUiTools import QUiLoader
 from qt_material import QtStyleTools, apply_stylesheet
 import qtawesome as qta
@@ -136,18 +136,18 @@ class WellGridApp(QMainWindow):
         measurement_widget.setLayout(measurement_layout)
 
         # Splitter for sidebar and main view
-        layout_splitter = QSplitter(Qt.Orientation.Horizontal)
-        layout_splitter.addWidget(sidebar_widget)
-        layout_splitter.addWidget(image_widget)
-        layout_splitter.addWidget(measurement_widget)
+        self.layout_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.layout_splitter.addWidget(sidebar_widget)
+        self.layout_splitter.addWidget(image_widget)
+        self.layout_splitter.addWidget(measurement_widget)
 
         # Set the splitter's stretch factor so the sidebar doesn't resize
-        layout_splitter.setStretchFactor(0, 0)  # Sidebar fixed
-        layout_splitter.setStretchFactor(1, 1)  # Image section resizable
-        layout_splitter.setStretchFactor(2, 0)  # Measurements table resizable
+        self.layout_splitter.setStretchFactor(0, 0)  # Sidebar fixed
+        self.layout_splitter.setStretchFactor(1, 1)  # Image section resizable
+        self.layout_splitter.setStretchFactor(2, 0)  # Measurements table resizable
 
         # Set the central widget as the splitter layout
-        self.setCentralWidget(layout_splitter)
+        self.setCentralWidget(self.layout_splitter)
 
         # Status bar
         self.status_bar = QStatusBar()
@@ -997,9 +997,41 @@ class WellGridApp(QMainWindow):
             self.show_custom_tooltips()
         
         self.tooltips_active = not self.tooltips_active
+
+
+class ScalableWindow(QGraphicsView):
+    def __init__(self, main_window, screen_size):
+        super().__init__()
+
+        # Create a QGraphicsScene and add the main window to it
+        self.scene = QGraphicsScene()
+        self.setScene(self.scene)
+
+        # Use QGraphicsProxyWidget to embed the main window in the scene
+        self.proxy = QGraphicsProxyWidget()
+        self.proxy.setWidget(main_window)
+        self.scene.addItem(self.proxy)
+
+        # Set the fixed size of the view to match the screen size
+        #self.setSize(screen_size.width(), screen_size.height())
+
+    def apply_scaling(self, main_window_size, screen_size):
+        """Apply scaling based on the main window size and screen size."""
+        scale_factor_w = screen_size.width() / main_window_size.width()
+        scale_factor_h = screen_size.height() / main_window_size.height()
+        scale_factor = min(scale_factor_w, scale_factor_h)  # Use the smaller factor to keep the aspect ratio
+
+        transform = QTransform()
+        transform.scale(scale_factor, scale_factor)
+        self.setTransform(transform)
+
 if __name__ == "__main__":
     logger.debug("Starting WellGridApp.")
+    
+
     app = QApplication(sys.argv)
+
+    # Create the main window
     # setup stylesheet
     extra = {
         # Density Scale
@@ -1007,8 +1039,20 @@ if __name__ == "__main__":
         'font_size': '16px',
     }
     QToolTip.setFont(QFont('Roboto', 12))
-
     apply_stylesheet(app, theme='dark_teal.xml', extra=extra)
-    window = WellGridApp()
-    window.show()
+    main_window = WellGridApp()
+
+    # Get the screen size
+    screen = app.primaryScreen()
+    screen_size = screen.size()
+
+    # Create the scalable view and embed the main window inside it
+    scalable_view = ScalableWindow(main_window, screen_size)
+    scalable_view.show()
+
+    # Apply scaling based on the size of WellGridApp and the screen size
+    main_window_size = main_window.size()
+    scalable_view.apply_scaling(main_window_size, screen_size)
+
+    #window.show()
     sys.exit(app.exec())
