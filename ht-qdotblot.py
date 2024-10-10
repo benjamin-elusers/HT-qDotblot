@@ -25,6 +25,7 @@ COLUMNS = 12
 MAXINT16 = 65535.0
 MAXINT8 = 255.0
 COLOR_THEME = "#1de9b6"
+BACKGROUNDCOLOR_THEME = "#31363b"
 ICON_OPTIONS = [{'scale_factor': 1.4, 'color' : COLOR_THEME }]
 
 # Setup logger
@@ -84,6 +85,7 @@ class WellGridApp(QMainWindow):
         self.grid_defined = False
         self.magnifier_item = None
         self.spacing_increment = 1
+        self.tooltip_shown = False
 
     def check_grid(self):
         logger.debug(f"ROI circles   : {len(self.circles)}")
@@ -99,17 +101,18 @@ class WellGridApp(QMainWindow):
         logger.debug("Setting up UI components.")
         
         # Sidebar (left panel) with fixed width
-        sidebar_widget = self.setup_sidebar()
+        self.sidebar_widget = self.setup_sidebar()
         #sidebar_widget.setMaximumHeight(950)        
 
         # Image widget
-        image_widget = QWidget()
-        image_widget.setMaximumWidth(900)        
+        self.image_widget = QWidget()
+        #self.image_widget.setMaximumWidth(900)        
         image_group = QGroupBox("Image Section")
         image_layout = QVBoxLayout()
         
         # Add the toolbar for image controls
-        image_layout.addWidget(self.setup_image_toolbar())  # Toolbar added to the top of the image section
+        self.image_toolbar = self.setup_image_toolbar()
+        image_layout.addWidget(self.image_toolbar)  # Toolbar added to the top of the image section
         
         # Add scene for image display
         self.image_scene = QGraphicsScene()
@@ -122,24 +125,24 @@ class WellGridApp(QMainWindow):
         image_group.setLayout(image_layout)
         image_widget_layout = QVBoxLayout()
         image_widget_layout.addWidget(image_group)
-        image_widget.setLayout(image_widget_layout)
+        self.image_widget.setLayout(image_widget_layout)
 
         # Measurement widget
-        measurement_widget = QWidget()
-        measurement_widget.setMaximumWidth(720)
+        self.measurement_widget = QWidget()
+        #measurement_widget.setMaximumWidth(720)
         measurement_layout = QVBoxLayout()
         measurement_group = QGroupBox("Measurements Section")
         
         # Add measurements table to measurements group
         measurement_group.setLayout(self.setup_measurements_table())  # Assuming this method returns a layout
         measurement_layout.addWidget(measurement_group)
-        measurement_widget.setLayout(measurement_layout)
+        self.measurement_widget.setLayout(measurement_layout)
 
         # Splitter for sidebar and main view
         self.layout_splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.layout_splitter.addWidget(sidebar_widget)
-        self.layout_splitter.addWidget(image_widget)
-        self.layout_splitter.addWidget(measurement_widget)
+        self.layout_splitter.addWidget(self.sidebar_widget)
+        self.layout_splitter.addWidget(self.image_widget)
+        self.layout_splitter.addWidget(self.measurement_widget)
 
         # Set the splitter's stretch factor so the sidebar doesn't resize
         self.layout_splitter.setStretchFactor(0, 0)  # Sidebar fixed
@@ -193,34 +196,33 @@ class WellGridApp(QMainWindow):
         # Add a question mark icon button to show all tooltips
         question_icon = qta.icon('mdi6.help-circle-outline', options=ICON_OPTIONS)
         self.tooltip_button = QPushButton(question_icon, "Help")
-        #self.tooltip_button.clicked.connect(self.toggle_all_tooltips)
-        self.tooltip_button.clicked.connect(self.toggle_custom_tooltips)
-
+        self.tooltip_button.pressed.connect(self.toggle_custom_tooltips)
         sidebar_layout.addWidget(self.tooltip_button)
 
         # Image controls
-        image_group = QGroupBox("Image Controls")
-        #image_group.setFixedHeight(200)
+        image_control = QGroupBox("Image Controls")
+        #image_control.setFixedHeight(200)
         image_layout = QVBoxLayout()
         self.setup_image_controls(image_layout)
-        image_group.setLayout(image_layout)
+        image_control.setLayout(image_layout)
 
         # Grid controls
-        grid_group = QGroupBox("Grid Controls")
+        grid_control = QGroupBox("Grid Controls")
         grid_layout = QVBoxLayout()
         self.setup_grid_controls(grid_layout)
-        grid_group.setLayout(grid_layout)
+        grid_control.setLayout(grid_layout)
 
         # Measurements controls
-        measurements_group = QGroupBox("Measurements Controls")
+        measurements_control = QGroupBox("Measurements Controls")
+        measurements_control.setFixedHeight(200)
         measurements_layout = QVBoxLayout()
         self.setup_measurement_controls(measurements_layout)
-        measurements_group.setLayout(measurements_layout)
+        measurements_control.setLayout(measurements_layout)
 
         # Add each section to the sidebar layout
-        sidebar_layout.addWidget(image_group)
-        sidebar_layout.addWidget(grid_group)
-        sidebar_layout.addWidget(measurements_group)
+        sidebar_layout.addWidget(image_control)
+        sidebar_layout.addWidget(grid_control)
+        sidebar_layout.addWidget(measurements_control)
 
         # Set layout for sidebar widget
         sidebar_widget.setLayout(sidebar_layout)
@@ -249,11 +251,11 @@ class WellGridApp(QMainWindow):
         self.zoom_out_button.clicked.connect(self.zoom_out)
         image_toolbar.addWidget(self.zoom_out_button)
 
-        # Pan button with icon
-        pan_icon = qta.icon('mdi6.pan', options=ICON_OPTIONS)
-        self.pan_button = QPushButton(pan_icon, "Pan")
-        self.pan_button.clicked.connect(self.toggle_pan_mode)
-        image_toolbar.addWidget(self.pan_button)
+        # # Pan button with icon
+        # pan_icon = qta.icon('mdi6.pan', options=ICON_OPTIONS)
+        # self.pan_button = QPushButton(pan_icon, "Pan")
+        # self.pan_button.clicked.connect(self.toggle_pan_mode)
+        # image_toolbar.addWidget(self.pan_button)
 
         return image_toolbar
 
@@ -339,55 +341,27 @@ class WellGridApp(QMainWindow):
         self.roi_radius_slider.setToolTip("Adjust the radius of the region of interest (ROI) drawn around each well.")
         self.color_button.setToolTip("Change the color of the well ROIs in the grid.")
         
-        self.left_button.setToolTip("Translate grid to the LEFT by 1 pixel.")
-        self.up_button.setToolTip("Translate grid UP by 1 pixel.")
-        self.right_button.setToolTip("Translate grid to the RIGHT by 1 pixel.")
-        self.down_button.setToolTip("Translate grid DOWN by 1 pixel.")
+        self.arrow_buttons.setToolTip("Move grid by 1 pixel in any direction.")
+        self.left_button.setToolTip("LEFT")
+        self.up_button.setToolTip("UP")
+        self.right_button.setToolTip("RIGHT")
+        self.down_button.setToolTip("DOWN")
 
         self.spacing_increment_input.setToolTip("Set the grid spacing increment between the wells.")
         #self.increase_button.setToolTip("Increase grid spacing (width|height = horizontal|vertical).")
         #self.decrease_button.setToolTip("Decrease grid spacing (width|height = horizontal|vertical).")
 
-        self.measure_button.setToolTip("Measure the intensity values of the grid.")
+        self.measure_button.setToolTip("Measure the grid intensity values within each well.")
         self.save_grid_button.setToolTip("Save the grid measurements of the current image to a CSV file.")
         self.reset_button.setToolTip("Reset the app to its initial state.")
 
-        self.save_image_button.setToolTip("Save the current displayed image.")
-        self.zoom_in_button.setToolTip("Zoom in on the image.")
-        self.zoom_out_button.setToolTip("Zoom out of the image.")
-        self.pan_button.setToolTip("Pan around the image.")
-        self.image_view.setToolTip("Region where the current selected image is displayed.")
-        self.measurements_table.setToolTip("Table to preview the grid measurements on the current image.")
-
-    def clear_tooltips(self):
-        # Add tooltips for each UI element
-        self.load_button.setToolTip("")
-        self.image_list.setToolTip("")
-        self.saturation_slider.setToolTip("")
-
-        self.define_grid_button.setToolTip("")
-        self.roi_radius_slider.setToolTip("")
-        self.color_button.setToolTip("")
-        
-        self.left_button.setToolTip("")
-        self.up_button.setToolTip("")
-        self.right_button.setToolTip("")
-        self.down_button.setToolTip("")
-
-        self.spacing_increment_input.setToolTip("")
-        #self.increase_button.setToolTip("Increase grid spacing (width|height = horizontal|vertical).")
-        #self.decrease_button.setToolTip("Decrease grid spacing (width|height = horizontal|vertical).")
-
-        self.measure_button.setToolTip("")
-        self.save_grid_button.setToolTip("")
-        self.reset_button.setToolTip("")
-
-        self.save_image_button.setToolTip("")
-        self.zoom_in_button.setToolTip("")
-        self.zoom_out_button.setToolTip("")
-        self.pan_button.setToolTip("")
-        self.image_view.setToolTip("")
-        self.measurements_table.setToolTip("")
+        self.save_image_button.setToolTip("Save the displayed image.")
+        self.zoom_in_button.setToolTip("Zoom in on the displayed image.")
+        self.zoom_out_button.setToolTip("Zoom out of the displayed image.")
+        # self.pan_button.setToolTip("Pan around the displayed image.")
+        self.image_view.setToolTip("Region where the selected image is displayed.")
+        self.measurements_table.setToolTip("Table to preview the grid measurements from the displayed image.")
+        self.status_bar.setToolTip("Status bar showing X/Y coordinates and corresponding intensity (raw/relative/percentile).")
 
     def connect_mouse_events(self):
         """Connect mouse move event to track coordinates."""
@@ -404,14 +378,24 @@ class WellGridApp(QMainWindow):
 
             if is_cursor_inframe:
                 self.update_status_bar(x, y)
+
+                # Ensure magnifier is triggered during grid definition
                 if self.defining_grid:
-                    self.update_magnifier(x, y)
+                    logger.debug("Magnifier being updated")
+                    self.update_magnifier(x, y)  # Ensure magnifier is updated during grid definition
+
             if self.defining_grid and not is_cursor_inframe and self.magnifier_item:
                 self.image_scene.removeItem(self.magnifier_item)
                 self.magnifier_item = None
 
+        if event.type() == QEvent.WindowDeactivate:  # Window loses focus
+            self.hide_custom_tooltips()
+        elif event.type() == QEvent.WindowActivate:  # Window gains focus
+            if self.tooltip_shown:  # If tooltips were active before losing focus, show them again
+                self.show_custom_tooltips()
+
         return super().eventFilter(obj, event)
-    
+
     def on_mouse_press(self, event):
         """Handle mouse press to define grid corners."""
         if len(self.corners) < 3 and self.defining_grid:
@@ -431,11 +415,13 @@ class WellGridApp(QMainWindow):
                 self.define_grid_button.setText("Define Grid")
                 self.image_view.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
                 self.image_view.mousePressEvent = None
+                self.hide_grid_message()  # Hide the message here
                 if self.magnifier_item:
                     self.image_scene.removeItem(self.magnifier_item)
                     self.magnifier_item = None
                 self.draw_orientation_lines()
                 self.draw_grid()
+
 
     ###############
     #### IMAGE ####
@@ -468,6 +454,11 @@ class WellGridApp(QMainWindow):
             self.original_image = self.current_image.copy()
             self.update_image()
 
+            # Ensure the grid persists and is adjusted for the new image
+            if self.grid_defined:
+                logger.info("Grid is already defined, updating for new image.")
+                self.update_grid()
+
     def update_image(self):
         """Update the displayed image after any changes."""
         logger.debug("Updating image.")
@@ -480,17 +471,18 @@ class WellGridApp(QMainWindow):
             self.image_scene.clear()
             self.image_scene.addPixmap(pixmap)
             self.image_view.setSceneRect(QRectF(pixmap.rect()))
-            self.update_grid()
+            self.draw_orientation_lines()
+            self.draw_grid()
 
     def zoom_in(self):
         """Zoom in the image."""
         self.image_view.scale(1.25, 1.25)  # Increase the zoom by 25%
-        self.image_view.setDragMode(QGraphicsView.ScrollHandDrag)
+        #self.image_view.setDragMode(QGraphicsView.ScrollHandDrag)
 
     def zoom_out(self):
         """Zoom out the image."""
         self.image_view.scale(0.8, 0.8)  # Decrease the zoom by 20%
-        self.image_view.setDragMode(QGraphicsView.ScrollHandDrag)
+        #self.image_view.setDragMode(QGraphicsView.ScrollHandDrag)
 
     def toggle_pan_mode(self):
         """Toggle the pan mode for moving around the image."""
@@ -617,8 +609,9 @@ class WellGridApp(QMainWindow):
         # Translate Grid Section
         layout.addWidget(QLabel("Translate Grid"))
 
-        button_layout = QVBoxLayout()
         # Create grid movement buttons in a cross layout
+        arrow_button_layout = QVBoxLayout()
+        self.arrow_buttons = QWidget()
 
         # Empty widget to create space between left and right
         empty_label = QLabel(" ")
@@ -654,12 +647,13 @@ class WellGridApp(QMainWindow):
         bottom_layout.addWidget(self.down_button)
         bottom_layout.addWidget(empty_label)
 
-        button_layout.addLayout(top_layout)
-        button_layout.addLayout(center_layout)
-        button_layout.addLayout(bottom_layout)
-
+        arrow_button_layout.addWidget(self.arrow_buttons)
+        arrow_button_layout.addLayout(top_layout)
+        arrow_button_layout.addLayout(center_layout)
+        arrow_button_layout.addLayout(bottom_layout)
+    
         # Add the button layout to the sidebar or the parent layout
-        layout.addLayout(button_layout)
+        layout.addLayout(arrow_button_layout)
 
         # Spacing controls
         layout.addWidget(QLabel("Spacing Increment:"))
@@ -676,6 +670,7 @@ class WellGridApp(QMainWindow):
         self.setup_adjustment_buttons(layout, "Height", 'height')
 
     def update_grid(self):
+        self.check_grid()
         self.erase_grid()
         self.draw_orientation_lines()
         self.draw_grid()
@@ -727,7 +722,12 @@ class WellGridApp(QMainWindow):
         logger.info("--> Grid definition mode activated.")
         if self.current_image is None:
             return
+        
         self.reset_grid()
+
+        # Show message to the user
+        self.show_define_grid_message()
+
         self.grid_defined = False
         self.defining_grid = True
         self.define_grid_button.setText("Cancel Grid Definition")
@@ -938,7 +938,7 @@ class WellGridApp(QMainWindow):
 
     def reset_app(self):
         """Reset the application to its initial state."""
-        logger.info("Resetting the application.")
+        logger.debug("Resetting the application.")
         self.init_variables()
         self.image_list.clear()
         self.image_scene.clear()
@@ -947,10 +947,49 @@ class WellGridApp(QMainWindow):
         self.measurements_table.setColumnCount(0)
         logger.info("App has been reset to its initial state.")
     
+    def hide_grid_message(self):
+        """Hide the message after defining the grid."""
+        if hasattr(self, 'grid_msg'):
+            self.grid_msg.hide()
+            self.grid_msg.deleteLater()
+
+    def show_define_grid_message(self):
+        """Show a message to guide the user to define the grid."""
+        self.grid_msg = QLabel(self)
+        self.grid_msg.setText(
+            "Please click three times on the image in order to indicate the location of the following wells:\n"
+            "1. Top-left corner (A01)\n"
+            "2. Top-right corner (A12)\n"
+            "3. Bottom-left corner (H01)\n\n"
+            "The grid will appear on the image once the three corners have been registered."
+        )
+
+        self.grid_msg.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.grid_msg.adjustSize()
+
+        # Position the message just below the image view
+        image_view_geometry = self.image_view.geometry()
+        toolbar_geometry    = self.image_toolbar.geometry()
+        image_widget_geometry    = self.image_widget.geometry()
+        self.grid_msg.setGeometry(
+            image_widget_geometry.left(),
+            toolbar_geometry.bottom() + self.grid_msg.height(),  # 10 pixels below the image
+            self.grid_msg.width(),
+            self.grid_msg.height()
+        )
+        
+        self.grid_msg.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 200); color: white; padding: 10px; font-size: 12px;"
+        )
+        
+        self.grid_msg.show()
+
+
     def show_custom_tooltips(self):
         """Show custom tooltips for all widgets that have them and keep them visible."""
-        logger.info("Showing all tooltips.")
+        logger.debug("Showing all tooltips.")
         self.custom_tooltips = []  # Keep track of the custom tooltips we create
+        self.tooltip_shown = True  # Flag to track if tooltips are currently shown
 
         # Helper function to create custom tooltip for each widget
         def create_custom_tooltip(widget):
@@ -958,13 +997,38 @@ class WellGridApp(QMainWindow):
                 # Create a label that mimics a tooltip
                 tooltip_label = QLabel(widget.toolTip(), self)
                 tooltip_label.setStyleSheet(
-                    "background-color: teal; color: yellow; border: 1px solid black; padding: 2px;"
+                    f"background-color: {COLOR_THEME}; color: {BACKGROUNDCOLOR_THEME}; border: 1px solid black; border-radius: 5px; padding: 2px; font-size: 11px;"
                 )
                 tooltip_label.setWindowFlags(Qt.ToolTip)
                 tooltip_label.adjustSize()
 
-                # Position the tooltip at the center of the widget
-                global_pos = widget.mapToGlobal(widget.rect().topRight())
+                # Determine the position based on the widget
+                if widget in self.findChildren(QPushButton) and widget.parent() != self.image_toolbar:  # For sidebar elements
+                    global_pos = widget.mapToGlobal(widget.rect().topRight())
+                    # Vertically center the tooltip relative to the widget
+                    global_pos.setY(global_pos.y() + widget.rect().height() // 2 - tooltip_label.height() // 2)
+                elif widget == self.image_view or widget == self.measurements_table:
+                    # Display tooltip in the center of the widget
+                    global_pos = widget.mapToGlobal(widget.rect().center())
+                    global_pos.setX(global_pos.x() - tooltip_label.width() // 2)
+                    global_pos.setY(global_pos.y() - tooltip_label.height() // 2)
+                elif widget == self.status_bar:
+                    global_pos = widget.mapToGlobal(widget.rect().topLeft())
+                elif widget in self.findChildren(QPushButton) and widget.parent() == self.image_toolbar:  # For toolbar buttons (added to a QToolBar)
+                    toolbar_buttons = self.image_toolbar.findChildren(QPushButton)
+                    print(toolbar_buttons)
+                    index = toolbar_buttons.index(widget)
+                    if index % 2 == 0:
+                        # Alternating above the button
+                        global_pos = widget.mapToGlobal(widget.rect().topLeft())
+                        global_pos.setY(global_pos.y() - tooltip_label.height())
+                    else:
+                        # Alternating below the button
+                        global_pos = widget.mapToGlobal(widget.rect().bottomLeft())
+                else:
+                    # Default positioning for other widgets
+                    global_pos = widget.mapToGlobal(widget.rect().topRight())
+
                 tooltip_label.move(global_pos)
                 tooltip_label.show()
 
@@ -977,7 +1041,7 @@ class WellGridApp(QMainWindow):
 
     def hide_custom_tooltips(self):
         """Hide all custom tooltips by removing them from the screen."""
-        logger.info("Hiding all tooltips.")
+        logger.debug("Hiding all tooltips.")
         if hasattr(self, 'custom_tooltips'):
             # Hide and delete all custom tooltips
             for tooltip_label in self.custom_tooltips:
@@ -985,13 +1049,14 @@ class WellGridApp(QMainWindow):
                 tooltip_label.deleteLater()
             # Clear the list after removing tooltips
             self.custom_tooltips = []
+        self.tooltip_shown = False  # Tooltips are hidden
 
     def toggle_custom_tooltips(self):
         """Toggle the display of custom tooltips for all widgets."""
-        if not hasattr(self, 'tooltips_active'):
-            self.tooltips_active = False  # Initialize the state
+        if not hasattr(self, 'tooltip_shown'):
+            self.tooltip_shown = False  # Initialize the state
         
-        if self.tooltips_active:
+        if self.tooltip_shown:
             self.hide_custom_tooltips()
         else:
             self.show_custom_tooltips()
@@ -1018,11 +1083,11 @@ class ScalableWindow(QGraphicsView):
     def apply_scaling(self, main_window_size, screen_size):
         """Apply scaling based on the main window size and screen size."""
         scale_factor_w = screen_size.width() / main_window_size.width()
-        scale_factor_h = screen_size.height() / main_window_size.height()
+        scale_factor_h = screen_size.height() / main_window_size.height() 
         scale_factor = min(scale_factor_w, scale_factor_h)  # Use the smaller factor to keep the aspect ratio
 
         transform = QTransform()
-        transform.scale(scale_factor, scale_factor)
+        transform.scale(scale_factor*0.98, scale_factor*0.90)
         self.setTransform(transform)
 
 if __name__ == "__main__":
@@ -1035,7 +1100,7 @@ if __name__ == "__main__":
     # setup stylesheet
     extra = {
         # Density Scale
-        'density_scale': '-3',
+        'density_scale': '-2',
         'font_size': '16px',
     }
     QToolTip.setFont(QFont('Roboto', 12))
@@ -1056,3 +1121,4 @@ if __name__ == "__main__":
 
     #window.show()
     sys.exit(app.exec())
+
