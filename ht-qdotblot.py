@@ -4,18 +4,20 @@ import numpy as np
 import cv2
 import csv
 import os
+#from PIL import Image, ImageDraw
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QMenu, QWidget,  QStatusBar, 
                                QGroupBox, QVBoxLayout, QHBoxLayout, QSplitter, QSpinBox, 
                                QPushButton, QSlider, QFileDialog, QColorDialog, QLabel,  
-                               QGraphicsView, QGraphicsProxyWidget, QGraphicsScene, QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsTextItem,
-                               QListWidget,  QTableWidget, QTableWidgetItem, QToolBar, QToolTip )
+                               QGraphicsView, QGraphicsItemGroup, QGraphicsProxyWidget, QGraphicsScene, QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsTextItem,
+                               QListWidget,  QSizePolicy, QTableWidget, QTableWidgetItem, QToolBar, QToolTip )
 from PySide6.QtCore import Qt, QLineF, QRectF, QPointF, QEvent, QTimer
 
 from PySide6.QtGui import QAction, QIcon, QImage, QPixmap, QPen, QColor, QPainter, QCursor, QFont, QFontDatabase, QTransform
 from PySide6.QtUiTools import QUiLoader
 from qt_material import QtStyleTools, apply_stylesheet
 import qtawesome as qta
+#import tifffile
 
 # Constants
 ROI_RADIUS = 15
@@ -30,7 +32,25 @@ ICON_OPTIONS = [{'scale_factor': 1.4, 'color' : COLOR_THEME }]
 
 # Setup logger
 logger = logging.getLogger(__name__)
+# Define the TRACE level
+TRACE_LEVEL_NUM = 5  # This should be less than DEBUG (10)
+logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
+
+# Add a trace method to the logger
+def trace(self, message, *args, **kwargs):
+    if self.isEnabledFor(TRACE_LEVEL_NUM):
+        self._log(TRACE_LEVEL_NUM, message, args, **kwargs)
+
+logging.Logger.trace = trace
 logging.basicConfig(level=logging.INFO)
+
+
+def get_well_name(row, col):
+    """Get well name based on row and column indices."""
+    letter = chr(ord('A') + row)
+    number = f"{col + 1:02}"
+    return f"{letter}{number}"
+
 
 class RuntimeStylesheets(QMainWindow, QtStyleTools):
 
@@ -85,7 +105,6 @@ class WellGridApp(QMainWindow):
         self.grid_defined = False
         self.magnifier_item = None
         self.spacing_increment = 1
-        self.tooltip_shown = False
 
     def check_grid(self):
         logger.debug(f"ROI circles   : {len(self.circles)}")
@@ -102,26 +121,38 @@ class WellGridApp(QMainWindow):
         
         # Sidebar (left panel) with fixed width
         self.sidebar_widget = self.setup_sidebar()
-        #sidebar_widget.setMaximumHeight(950)        
 
         # Image widget
         self.image_widget = QWidget()
-        #self.image_widget.setMaximumWidth(900)        
         image_group = QGroupBox("Image Section")
         image_layout = QVBoxLayout()
-        
+
         # Add the toolbar for image controls
         self.image_toolbar = self.setup_image_toolbar()
         image_layout.addWidget(self.image_toolbar)  # Toolbar added to the top of the image section
         
         # Add scene for image display
         self.image_scene = QGraphicsScene()
-        self.image_view = QGraphicsView(self.image_scene)  # Store image_view as a class attribute if needed elsewhere
+        self.image_group = QGraphicsItemGroup()  
+        self.image_scene.addItem(self.image_group)
+        self.grid_group = QGraphicsItemGroup()
+        self.image_scene.addItem(self.grid_group)
+
+        # QGraphicsView for displaying images
+        self.image_view = QGraphicsView()
+        self.image_view.setScene(self.image_scene)
         self.image_view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.image_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.image_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        image_layout.addWidget(self.image_view)  # Only the image_view is added to the layout, not the scene itself
-        
+
+        # Add the QGraphicsView to the layout
+        image_layout.addWidget(self.image_view)  # <-- Ensure the QGraphicsView is added to the layout
+
+        # Set size policies and minimum size
+        self.image_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.image_view.setMinimumSize(400, 400)  # Minimum size to make sure it's visible
+
+        # Set layout for image group
         image_group.setLayout(image_layout)
         image_widget_layout = QVBoxLayout()
         image_widget_layout.addWidget(image_group)
@@ -129,7 +160,6 @@ class WellGridApp(QMainWindow):
 
         # Measurement widget
         self.measurement_widget = QWidget()
-        #measurement_widget.setMaximumWidth(720)
         measurement_layout = QVBoxLayout()
         measurement_group = QGroupBox("Measurements Section")
         
@@ -144,10 +174,10 @@ class WellGridApp(QMainWindow):
         self.layout_splitter.addWidget(self.image_widget)
         self.layout_splitter.addWidget(self.measurement_widget)
 
-        # Set the splitter's stretch factor so the sidebar doesn't resize
+        # Set the splitter's stretch factor to manage resizing behavior
         self.layout_splitter.setStretchFactor(0, 0)  # Sidebar fixed
-        self.layout_splitter.setStretchFactor(1, 1)  # Image section resizable
-        self.layout_splitter.setStretchFactor(2, 0)  # Measurements table resizable
+        self.layout_splitter.setStretchFactor(1, 2)  # Image section resizable and prioritized
+        self.layout_splitter.setStretchFactor(2, 1)  # Measurements table resizable, less priority
 
         # Set the central widget as the splitter layout
         self.setCentralWidget(self.layout_splitter)
@@ -157,33 +187,37 @@ class WellGridApp(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.setup_tooltips()
 
-    def setup_theme_menu(self):
-        """Create a menu for selecting themes."""
-        logger.debug("Creating theme selection menu.")
+        # Add a placeholder rectangle to the scene to test visibility
+        #placeholder_rect = self.image_scene.addRect(0, 0, 500, 500, QPen(Qt.black))  # Placeholder for visibility
 
-        # Create a menu bar
-        menu_bar = self.menuBar()
 
-        # Add a "Themes" menu
-        themes_menu = QMenu("Themes", self)
-        menu_bar.addMenu(themes_menu)
+    # def setup_theme_menu(self):
+    #     """Create a menu for selecting themes."""
+    #     logger.debug("Creating theme selection menu.")
 
-        # List of available themes in qt-material
-        available_themes = [
-            'dark_blue.xml', 'dark_cyan.xml', 'dark_lightgreen.xml', 'dark_pink.xml',
-            'dark_purple.xml', 'dark_red.xml', 'dark_teal.xml', 'dark_yellow.xml'
-        ]
+    #     # Create a menu bar
+    #     menu_bar = self.menuBar()
 
-        # Create actions for each theme
-        for theme in available_themes:
-            theme_action = QAction(theme.replace(".xml", "").replace("_", " ").capitalize(), self)
-            theme_action.triggered.connect(lambda checked=False, t=theme: self.apply_theme(t))
-            themes_menu.addAction(theme_action)
+    #     # Add a "Themes" menu
+    #     themes_menu = QMenu("Themes", self)
+    #     menu_bar.addMenu(themes_menu)
 
-    def apply_theme(self, theme):
-        """Apply the selected theme."""
-        logger.info(f"Applying theme: {theme}")
-        apply_stylesheet(app, theme=theme, extra=extra)
+    #     # List of available themes in qt-material
+    #     available_themes = [
+    #         'dark_blue.xml', 'dark_cyan.xml', 'dark_lightgreen.xml', 'dark_pink.xml',
+    #         'dark_purple.xml', 'dark_red.xml', 'dark_teal.xml', 'dark_yellow.xml'
+    #     ]
+
+    #     # Create actions for each theme
+    #     for theme in available_themes:
+    #         theme_action = QAction(theme.replace(".xml", "").replace("_", " ").capitalize(), self)
+    #         theme_action.triggered.connect(lambda checked=False, t=theme: self.apply_theme(t))
+    #         themes_menu.addAction(theme_action)
+
+    # def apply_theme(self, theme):
+    #     """Apply the selected theme."""
+    #     logger.info(f"Applying theme: {theme}")
+    #     apply_stylesheet(app, theme=theme, extra=extra)
 
     def setup_sidebar(self):
         """Setup the sidebar with control sections for image, grid, and measurements."""
@@ -194,10 +228,10 @@ class WellGridApp(QMainWindow):
         sidebar_layout = QVBoxLayout()
 
         # Add a question mark icon button to show all tooltips
-        question_icon = qta.icon('mdi6.help-circle-outline', options=ICON_OPTIONS)
-        self.tooltip_button = QPushButton(question_icon, "Help")
-        self.tooltip_button.pressed.connect(self.toggle_custom_tooltips)
-        sidebar_layout.addWidget(self.tooltip_button)
+        # question_icon = qta.icon('mdi6.help-circle-outline', options=ICON_OPTIONS)
+        # self.tooltip_button = QPushButton(question_icon, "Help")
+        # self.tooltip_button.pressed.connect(self.toggle_custom_tooltips)
+        # sidebar_layout.addWidget(self.tooltip_button)
 
         # Image controls
         image_control = QGroupBox("Image Controls")
@@ -381,18 +415,12 @@ class WellGridApp(QMainWindow):
 
                 # Ensure magnifier is triggered during grid definition
                 if self.defining_grid:
-                    logger.debug("Magnifier being updated")
+                    logger.trace("Magnifier being updated")
                     self.update_magnifier(x, y)  # Ensure magnifier is updated during grid definition
 
             if self.defining_grid and not is_cursor_inframe and self.magnifier_item:
                 self.image_scene.removeItem(self.magnifier_item)
                 self.magnifier_item = None
-
-        if event.type() == QEvent.WindowDeactivate:  # Window loses focus
-            self.hide_custom_tooltips()
-        elif event.type() == QEvent.WindowActivate:  # Window gains focus
-            if self.tooltip_shown:  # If tooltips were active before losing focus, show them again
-                self.show_custom_tooltips()
 
         return super().eventFilter(obj, event)
 
@@ -406,8 +434,8 @@ class WellGridApp(QMainWindow):
             corner_ellipse.setPen(QPen(Qt.GlobalColor.red))
             corner_ellipse.setBrush(QColor(Qt.GlobalColor.red))
 
-            self.image_scene.addItem(corner_ellipse)
             self.corner_points.append(corner_ellipse)
+            self.image_group.addToGroup(corner_ellipse)
 
             if len(self.corners) == 3:
                 self.grid_defined = True
@@ -421,7 +449,11 @@ class WellGridApp(QMainWindow):
                     self.magnifier_item = None
                 self.draw_orientation_lines()
                 self.draw_grid()
-
+                
+                for cp in self.corner_points:
+                    self.image_group.removeFromGroup(cp)
+                    self.image_scene.removeItem(cp)
+                
 
     ###############
     #### IMAGE ####
@@ -450,6 +482,9 @@ class WellGridApp(QMainWindow):
         logger.info("Displaying image.")
         selected_idx = self.image_list.currentRow()
         if selected_idx >= 0:
+            # Clear the grid from the current scene
+            #self.erase_grid()
+
             self.current_image = self.images[selected_idx]
             self.original_image = self.current_image.copy()
             self.update_image()
@@ -468,8 +503,16 @@ class WellGridApp(QMainWindow):
             bytes_per_line = width * 2
             q_image = QImage(adjusted_image.data, width, height, bytes_per_line, QImage.Format.Format_Grayscale16)
             pixmap = QPixmap.fromImage(q_image)
-            self.image_scene.clear()
-            self.image_scene.addPixmap(pixmap)
+            # Clear the image group (not the whole scene)
+            for item in self.image_group.childItems():
+                self.image_group.removeFromGroup(item)
+                self.image_scene.removeItem(item)
+        
+            # Add the new pixmap to the image group
+            pixmap_item = self.image_scene.addPixmap(pixmap)
+            self.image_group.addToGroup(pixmap_item)
+            
+            # Adjust the view
             self.image_view.setSceneRect(QRectF(pixmap.rect()))
             self.draw_orientation_lines()
             self.draw_grid()
@@ -484,54 +527,73 @@ class WellGridApp(QMainWindow):
         self.image_view.scale(0.8, 0.8)  # Decrease the zoom by 20%
         #self.image_view.setDragMode(QGraphicsView.ScrollHandDrag)
 
-    def toggle_pan_mode(self):
-        """Toggle the pan mode for moving around the image."""
-        if self.image_view.dragMode() == QGraphicsView.ScrollHandDrag:
-            self.image_view.setDragMode(QGraphicsView.NoDrag)
-        else:
-            self.image_view.setDragMode(QGraphicsView.ScrollHandDrag)
-
     def save_image(self):
-        """Save the current displayed image with any painted objects."""
+        """Save the current displayed image with any painted objects at original resolution."""
         if not self.image_paths:
             return
 
         current_image_path = self.image_paths[self.image_list.currentRow()]
-        folder, filename_with_ext = os.path.split(current_image_path)  # Splits path into folder and filename
-        filename, ext = os.path.splitext(filename_with_ext)  # Splits filename into name and extension
+        folder, filename_with_ext = os.path.split(current_image_path)
+        filename, ext = os.path.splitext(filename_with_ext)
         dotblot_image = os.path.join(folder, f"dotblot-{filename}{ext}")
-
+        
         file_dialog = QFileDialog(self)
-        file_path, _ = file_dialog.getSaveFileName(self, "Save Image",  dotblot_image, "PNG Files (*.png);;JPG Files (*.jpg);;TIFF Files (*.tif);;")
+        file_path, _ = file_dialog.getSaveFileName(self, "Save Image", dotblot_image, 
+                                                   "PNG Files (*.png);;JPG Files (*.jpg);;TIFF Files (*.tif);;")
+        
         if file_path:
-            # Convert QGraphicsScene to image
-            image = QImage(self.image_view.viewport().size(), QImage.Format_ARGB32)
-            painter = QPainter(image)
-            self.image_view.render(painter)
+            # Load the original image
+            original_image = QImage(current_image_path)
+            
+            # Create a new image with the same size and format as the original
+            result_image = QImage(original_image.size(), QImage.Format_ARGB32)
+            result_image.fill(Qt.black)  # Fill with black background
+            
+            # Create a painter for the new image
+            painter = QPainter(result_image)
+            
+            # Draw the original image
+            painter.drawImage(0, 0, original_image)
+            
+            # Get the scale factor between the original image and the view
+            view_rect = self.image_view.viewport().rect()
+            scene_rect = self.image_view.sceneRect()
+            scale_x = original_image.width() / scene_rect.width()
+            scale_y = original_image.height() / scene_rect.height()
+            
+            # Set up the painter to use the correct scaling
+            painter.scale(scale_x, scale_y)
+            
+            # Render only the items (not the background) from the scene
+            self.image_view.scene().render(painter, QRectF(), scene_rect, Qt.IgnoreAspectRatio)
+            
             painter.end()
-            image.save(file_path)
-            logger.info(f"Image saved to {file_path}")
+            
+            # Save the result
+            result_image.save(file_path)
+            logger.info(f"Image saved with original resolution to {file_path}")
+
 
     def set_spacing_increment(self, value):
         """Set the grid spacing increment from the user input."""
-        logger.debug("Adjusting spacing increment.")
+        logger.trace("Adjusting spacing increment.")
         self.spacing_increment = value
 
     def adjust_image(self, image):
         """Adjust the image based on the saturation settings."""
-        logger.debug("Adjusting image saturation.")
+        logger.trace("Adjusting image saturation.")
         v_min, v_max = np.percentile(image, (0, 100 - self.saturation_fraction * 100))
         return np.clip((image - v_min) * MAXINT16 / (v_max - v_min), 0, MAXINT16).astype(np.uint16)
 
     def adjust_saturation(self, value):
         """Adjust image saturation and refresh."""
-        logger.debug(f"Adjusting saturation to {value}.")
+        logger.trace(f"Adjusting saturation to {value}.")
         self.saturation_fraction = value / 1000.0
         self.update_image()
 
     def update_status_bar(self, x, y):
         """Update the status bar with the current cursor position and intensity."""
-        logger.debug(f"Updating status bar for position: ({x}, {y}).")
+        logger.trace(f"Updating status bar for position: ({x}, {y}).")
         if self.current_image is None:
             return
         else:
@@ -547,7 +609,7 @@ class WellGridApp(QMainWindow):
 
     def update_magnifier(self, x, y):
         """Update magnifier view at the current cursor position."""
-        logger.debug(f"Updating magnifier at position: ({x}, {y}).")
+        logger.trace(f"Updating magnifier at position: ({x}, {y}).")
         if self.current_image is None:
             return
         else:
@@ -671,26 +733,13 @@ class WellGridApp(QMainWindow):
 
     def update_grid(self):
         self.check_grid()
-        self.erase_grid()
+        #self.erase_grid()
         self.draw_orientation_lines()
         self.draw_grid()
 
-    def remove_scene_items(self, items):
-        """Safely remove items from the scene."""
-        logger.debug("Removing scene items.")
-        for item in items[:]:  # Iterate over a copy of the list to avoid modifying it during iteration
-            if item and item.scene():  # Ensure the item still exists in the scene
-                self.image_scene.removeItem(item)  # Remove item from the scene
-
-    def clear_scene_items(self, items):
-        """Safely remove items from the scene and clear the list."""
-        logger.debug("Clearing scene items.")
-        self.remove_scene_items(items)
-        items.clear()  # Clear the list after all items are removed
-
     def adjust_roi_radius(self, value):
         """Adjust the ROI radius and refresh the image."""
-        logger.debug(f"Setting ROI radius to {value}.")
+        logger.trace(f"Setting ROI radius to {value}.")
         self.roi_radius = value
         self.update_grid()
 
@@ -698,7 +747,7 @@ class WellGridApp(QMainWindow):
         """Open a color dialog to change the ROI color."""
         color = QColorDialog.getColor(parent=self)
         if color.isValid():
-            logger.debug(f"Setting ROI color to {color}.")
+            logger.trace(f"Setting ROI color to {color}.")
             self.roi_color = color
             self.update_grid()
 
@@ -717,6 +766,7 @@ class WellGridApp(QMainWindow):
             self.define_grid()
             print("")
 
+
     def define_grid(self):
         """Start defining the grid by selecting corners."""
         logger.info("--> Grid definition mode activated.")
@@ -724,7 +774,7 @@ class WellGridApp(QMainWindow):
             return
         
         self.reset_grid()
-
+        self.corner_points = []
         # Show message to the user
         self.show_define_grid_message()
 
@@ -738,48 +788,33 @@ class WellGridApp(QMainWindow):
         """Reset the grid definition mode."""
         logger.info("--> Resetting grid definition mode.")
         self.reset_grid()
+        self.hide_grid_message()  # Hide the message here
         self.defining_grid = False
         self.define_grid_button.setText("Define Grid")
         self.image_view.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
         self.image_view.mousePressEvent = None
 
-    def erase_grid(self):
-        """Erase the grid items from the scene."""
-        self.remove_scene_items(self.circles)
-        self.remove_scene_items(self.labels)
-        self.remove_scene_items(self.corner_lines)
-        self.remove_scene_items(self.corner_points)
 
-    def remove_grid(self):
-        """Erase the grid items from the scene."""
-        self.erase_grid()
-        self.circles.clear()
-        self.labels.clear()
-        self.corner_lines.clear()
-        self.corner_points.clear()
-        self.corners.clear()
 
     def reset_grid(self):
         """Reset the grid and clear only the grid-related items from the scene."""
         logger.info("Resetting grid.")
+        self.corners=[]
         if self.grid_defined:
             logger.info("Removing existing grid.")
             self.grid_defined = False
-            self.check_grid()
-            self.remove_grid()
-            self.check_grid()
-        self.image_scene.update()
+            #self.erase_grid()  # Remove items from the grid group
+        #self.image_scene.update()
 
     def adjust_grid_spacing(self, direction, value):
         """Adjust the grid spacing by increasing or decreasing row/column spacing."""
-        logger.debug(f"Adjusting grid {direction} by {value}.")
+        logger.trace(f"Adjusting grid {direction} by {value}.")
         if direction == 'width':
             self.grid_spacing[0] += value  # Adjust only width
             self.grid_spacing[1] = 0  # Reset the height adjustment to 0
         elif direction == 'height':
             self.grid_spacing[0] = 0   # Reset the width adjustment to 0
             self.grid_spacing[1] += value  # Adjust only height
-        self.check_grid()
         self.update_grid()  # Redraw the grid with updated spacing
 
     def move_grid(self, dx, dy):
@@ -795,16 +830,25 @@ class WellGridApp(QMainWindow):
             logger.debug("Draw the corner orientation lines.")
             a1, a12, h1 = self.corners
             
+            # Clear existing corner lines
+            for line in self.corner_lines:
+                self.grid_group.removeFromGroup(line)
+                self.image_scene.removeItem(line)
+        
+
             self.corner_lines = []
+            # Draw horizontal and vertical lines
             hline = QGraphicsLineItem(QLineF(a1[0], a1[1], a12[0], a12[1]))
             hline.setPen(QPen(Qt.GlobalColor.yellow, 2))
-            self.image_scene.addItem(hline)
             self.corner_lines.append(hline)
+            self.grid_group.addToGroup(hline)
+
 
             vline = QGraphicsLineItem(QLineF(a1[0], a1[1], h1[0], h1[1]))
             vline.setPen(QPen(Qt.GlobalColor.yellow, 2))
-            self.image_scene.addItem(vline)
             self.corner_lines.append(vline)
+            self.grid_group.addToGroup(vline)
+
 
     def draw_grid(self):
         """Draw the grid based on defined corners and grid offset/spacing."""
@@ -820,6 +864,11 @@ class WellGridApp(QMainWindow):
 
         # Apply the grid offset (translation)
         a1 += np.array(self.grid_offset)
+    
+        # Clear the existing grid-related items
+        for item in self.circles + self.labels:
+            self.grid_group.removeFromGroup(item)
+            self.image_scene.removeItem(item)
 
         # Clear the scene and reset the tracking lists
         self.circles = []
@@ -836,9 +885,10 @@ class WellGridApp(QMainWindow):
                                             2 * self.roi_radius, 2 * self.roi_radius)
                 circ.setPen(QPen(self.roi_color))
                 self.circles.append(circ)  # Add circle to the list
+                self.grid_group.addToGroup(circ)
 
                 # Get the well name (3-character long)
-                well_name = self.get_well_name(i, j)
+                well_name = get_well_name(i, j)
 
                 # Create text item and center it on the circle
                 text = QGraphicsTextItem(well_name)
@@ -847,19 +897,12 @@ class WellGridApp(QMainWindow):
                 text.setPos(center[0] - text_width / 2, center[1] - text_height / 2)
                 text.setDefaultTextColor(self.roi_color)
                 self.labels.append(text)  # Add label to the list
+                self.grid_group.addToGroup(text)
 
-        # Add the circles and labels to the scene
-        for c in self.circles:
-            self.image_scene.addItem(c)
+        ## Add the grid group to the scene if not already added
+        #if self.grid_group.scene() is None:
+        #    self.image_scene.addItem(self.grid_group)
 
-        for t in self.labels:
-            self.image_scene.addItem(t)
-
-    def get_well_name(self, row, col):
-        """Get well name based on row and column indices."""
-        letter = chr(ord('A') + row)
-        number = f"{col + 1:02}"
-        return f"{letter}{number}"
 
     def measure_grid(self):
         """Measure the grid wells and collect intensity data."""
@@ -886,7 +929,7 @@ class WellGridApp(QMainWindow):
                 max_intensity = np.max(roi_pixels)
 
                 self.measurements.append({
-                    'well': self.get_well_name(i // self.ncols, i % self.ncols),
+                    'well': get_well_name(i // self.ncols, i % self.ncols),
                     'x_center': center_x,
                     'y_center': center_y,
                     'median': int(median_intensity),
@@ -898,7 +941,6 @@ class WellGridApp(QMainWindow):
                 })
 
         self.update_measurements_table()
-
 
     def update_measurements_table(self):
         """Update the measurements table with new data."""
@@ -941,7 +983,13 @@ class WellGridApp(QMainWindow):
         logger.debug("Resetting the application.")
         self.init_variables()
         self.image_list.clear()
-        self.image_scene.clear()
+        for item in self.image_group.childItems():
+            self.image_group.removeFromGroup(item)
+            self.image_scene.removeItem(item)
+        for item in self.grid_group.childItems():
+            self.grid_group.removeFromGroup(item)
+            self.image_scene.removeItem(item)
+        #self.image_scene.clear()
         self.measurements_table.clear()
         self.measurements_table.setRowCount(0)
         self.measurements_table.setColumnCount(0)
@@ -949,119 +997,45 @@ class WellGridApp(QMainWindow):
     
     def hide_grid_message(self):
         """Hide the message after defining the grid."""
-        if hasattr(self, 'grid_msg'):
-            self.grid_msg.hide()
-            self.grid_msg.deleteLater()
+        if hasattr(self, 'grid_instructions'):
+            self.grid_instructions.hide()
+            self.grid_instructions.deleteLater()
 
     def show_define_grid_message(self):
         """Show a message to guide the user to define the grid."""
-        self.grid_msg = QLabel(self)
-        self.grid_msg.setText(
-            "Please click three times on the image in order to indicate the location of the following wells:\n"
+        self.grid_instructions = QLabel(self)
+        self.grid_instructions.setText(
+            "The grid will appear on the image once its three corners have been registered.\n"
+            "Click on the image to locate the following wells:\n"
             "1. Top-left corner (A01)\n"
             "2. Top-right corner (A12)\n"
             "3. Bottom-left corner (H01)\n\n"
-            "The grid will appear on the image once the three corners have been registered."
         )
 
-        self.grid_msg.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.grid_msg.adjustSize()
+        self.grid_instructions.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.grid_instructions.adjustSize()
 
         # Position the message just below the image view
         image_view_geometry = self.image_view.geometry()
         toolbar_geometry    = self.image_toolbar.geometry()
         image_widget_geometry    = self.image_widget.geometry()
-        self.grid_msg.setGeometry(
-            image_widget_geometry.left(),
-            toolbar_geometry.bottom() + self.grid_msg.height(),  # 10 pixels below the image
-            self.grid_msg.width(),
-            self.grid_msg.height()
+        # Calculate the center x-coordinate of the image view
+        image_view_center_x = image_view_geometry.left() + (image_view_geometry.width() - self.grid_instructions.width()) // 2
+        # Position y-coordinate just below the toolbar
+        below_toolbar_y = toolbar_geometry.bottom() + 50  # 10 pixels below the toolbar
+
+        self.grid_instructions.setGeometry(
+            image_widget_geometry.left() + 50 , #+ self.grid_instructions.width(),
+            below_toolbar_y, 
+            image_widget_geometry.width() * 0.9,
+            self.grid_instructions.height() + 10 
         )
         
-        self.grid_msg.setStyleSheet(
-            "background-color: rgba(0, 0, 0, 200); color: white; padding: 10px; font-size: 12px;"
+        self.grid_instructions.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 160); color: white; padding: 10px; font-size: 14px;"
         )
         
-        self.grid_msg.show()
-
-
-    def show_custom_tooltips(self):
-        """Show custom tooltips for all widgets that have them and keep them visible."""
-        logger.debug("Showing all tooltips.")
-        self.custom_tooltips = []  # Keep track of the custom tooltips we create
-        self.tooltip_shown = True  # Flag to track if tooltips are currently shown
-
-        # Helper function to create custom tooltip for each widget
-        def create_custom_tooltip(widget):
-            if widget.toolTip():  # Only if the widget has a tooltip
-                # Create a label that mimics a tooltip
-                tooltip_label = QLabel(widget.toolTip(), self)
-                tooltip_label.setStyleSheet(
-                    f"background-color: {COLOR_THEME}; color: {BACKGROUNDCOLOR_THEME}; border: 1px solid black; border-radius: 5px; padding: 2px; font-size: 11px;"
-                )
-                tooltip_label.setWindowFlags(Qt.ToolTip)
-                tooltip_label.adjustSize()
-
-                # Determine the position based on the widget
-                if widget in self.findChildren(QPushButton) and widget.parent() != self.image_toolbar:  # For sidebar elements
-                    global_pos = widget.mapToGlobal(widget.rect().topRight())
-                    # Vertically center the tooltip relative to the widget
-                    global_pos.setY(global_pos.y() + widget.rect().height() // 2 - tooltip_label.height() // 2)
-                elif widget == self.image_view or widget == self.measurements_table:
-                    # Display tooltip in the center of the widget
-                    global_pos = widget.mapToGlobal(widget.rect().center())
-                    global_pos.setX(global_pos.x() - tooltip_label.width() // 2)
-                    global_pos.setY(global_pos.y() - tooltip_label.height() // 2)
-                elif widget == self.status_bar:
-                    global_pos = widget.mapToGlobal(widget.rect().topLeft())
-                elif widget in self.findChildren(QPushButton) and widget.parent() == self.image_toolbar:  # For toolbar buttons (added to a QToolBar)
-                    toolbar_buttons = self.image_toolbar.findChildren(QPushButton)
-                    print(toolbar_buttons)
-                    index = toolbar_buttons.index(widget)
-                    if index % 2 == 0:
-                        # Alternating above the button
-                        global_pos = widget.mapToGlobal(widget.rect().topLeft())
-                        global_pos.setY(global_pos.y() - tooltip_label.height())
-                    else:
-                        # Alternating below the button
-                        global_pos = widget.mapToGlobal(widget.rect().bottomLeft())
-                else:
-                    # Default positioning for other widgets
-                    global_pos = widget.mapToGlobal(widget.rect().topRight())
-
-                tooltip_label.move(global_pos)
-                tooltip_label.show()
-
-                # Keep track of this tooltip label so we can hide it later
-                self.custom_tooltips.append(tooltip_label)
-
-        # Iterate over all children widgets in the application
-        for widget in self.findChildren(QWidget):
-            create_custom_tooltip(widget)
-
-    def hide_custom_tooltips(self):
-        """Hide all custom tooltips by removing them from the screen."""
-        logger.debug("Hiding all tooltips.")
-        if hasattr(self, 'custom_tooltips'):
-            # Hide and delete all custom tooltips
-            for tooltip_label in self.custom_tooltips:
-                tooltip_label.hide()
-                tooltip_label.deleteLater()
-            # Clear the list after removing tooltips
-            self.custom_tooltips = []
-        self.tooltip_shown = False  # Tooltips are hidden
-
-    def toggle_custom_tooltips(self):
-        """Toggle the display of custom tooltips for all widgets."""
-        if not hasattr(self, 'tooltip_shown'):
-            self.tooltip_shown = False  # Initialize the state
-        
-        if self.tooltip_shown:
-            self.hide_custom_tooltips()
-        else:
-            self.show_custom_tooltips()
-        
-        self.tooltips_active = not self.tooltips_active
+        self.grid_instructions.show()
 
 
 class ScalableWindow(QGraphicsView):
@@ -1076,6 +1050,7 @@ class ScalableWindow(QGraphicsView):
         self.proxy = QGraphicsProxyWidget()
         self.proxy.setWidget(main_window)
         self.scene.addItem(self.proxy)
+        self.showMaximized()
 
         # Set the fixed size of the view to match the screen size
         #self.setSize(screen_size.width(), screen_size.height())
@@ -1090,9 +1065,9 @@ class ScalableWindow(QGraphicsView):
         transform.scale(scale_factor*0.98, scale_factor*0.90)
         self.setTransform(transform)
 
+
 if __name__ == "__main__":
     logger.debug("Starting WellGridApp.")
-    
 
     app = QApplication(sys.argv)
 
@@ -1114,6 +1089,7 @@ if __name__ == "__main__":
     # Create the scalable view and embed the main window inside it
     scalable_view = ScalableWindow(main_window, screen_size)
     scalable_view.show()
+
 
     # Apply scaling based on the size of WellGridApp and the screen size
     main_window_size = main_window.size()
