@@ -144,7 +144,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## Acknowledgments
 
-This application was developed at the [Weizmann Institute of Science](https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoid2Vpem1hbm4taW5zdGl0dXRlLW9mLXNjaWVuY2VcL2ZpbGVcL2s4bVBkekt5ZzhxZFpvaThlNUhSLnN2ZyJ9:weizmann-institute-of-science:R-7q-CsQFwzd_e06DX-HCxTBCN2OHGbnalRVj6M6ENM?width=800) in [Maya Schuldiner laboratory](https://mayaschuldiner.wixsite.com/schuldinerlab).
+This application was developed at the [Weizmann Institute of Science](https://www.weizmann.ac.il/pages/) in [Maya Schuldiner laboratory](https://mayaschuldiner.wixsite.com/schuldinerlab).
 We thank the developers of the following packages used to create our application:
 
 - PySide6: For building the application’s GUI
@@ -152,6 +152,12 @@ We thank the developers of the following packages used to create our application
 - OpenCV: For image processing capabilities
 - qt-material: For providing a clean and modern GUI theme
 - qtawesome: For adding font-based icons to the application
+
+![WIS](https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoid2Vpem1hbm4taW5zdGl0dXRlLW9mLXNjaWVuY2VcL2ZpbGVcL2s4bVBkekt5ZzhxZFpvaThlNUhSLnN2ZyJ9:weizmann-institute-of-science:R-7q-CsQFwzd_e06DX-HCxTBCN2OHGbnalRVj6M6ENM?width=800)
+
+![MSLAB](https://www.weizmann.ac.il/ydimmer/sites/ydimmer/t…O_colorscale_nogb_rectangle_notagline@w1280px.png)
+
+
 
 ## Contact & Support
 
