@@ -155,7 +155,7 @@ We thank the developers of the following packages used to create our application
 
 ![WIS](https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoid2Vpem1hbm4taW5zdGl0dXRlLW9mLXNjaWVuY2VcL2ZpbGVcL2s4bVBkekt5ZzhxZFpvaThlNUhSLnN2ZyJ9:weizmann-institute-of-science:R-7q-CsQFwzd_e06DX-HCxTBCN2OHGbnalRVj6M6ENM?width=800)
 
-![MSLAB](https://www.weizmann.ac.il/ydimmer/sites/ydimmer/t…O_colorscale_nogb_rectangle_notagline@w1280px.png)
+![MSLAB](https://www.weizmann.ac.il/ydimmer/sites/ydimmer/themes/wis_theme/images/MS_LAB_LOGO_colorscale_nogb_rectangle_notagline@w1280px.png)
 
 
 
