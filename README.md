@@ -31,32 +31,46 @@ For the experimental protocol, please refer to the paper.
 
 ## Installation
 
+### Python3 and python virtual environment
+
+   Open a terminal and check which version of python is installed by running the command:
+   ```python --version```
+
+   To install python3 on your computer, follow the instructions from the [python beginner's guide](https://wiki.python.org/moin/BeginnersGuide/Download)
+   
+   (Recommended) Create a python virtual environment to install all the dependencies required for the app. 
+   In the terminal run:
+   ```python3 -m venv htq-dotblot```
+   
+   Activate the new environment:
+   ```source htq-dotblot/bin/activate```
+   
+
 ### Prerequisites
 
 - Python 3.8+
 - PySide6
 - numpy
 - opencv-python
-- csv
 - qt-material
 - qtawesome
 
 ### Getting Started
 
-1. Clone the repository:
+1. Clone the repository (or download and unzip it in a new folder called htq-dotblot):
    ```
    git clone https://github.com/benjamin-elusers/htq-doblot.git
-   cd htq-doblot
+   cd htq-dotblot
    ```
 
 2. Install dependencies:
    ```
-   pip install -r requirements.txt
+   pip3 install -r requirements.txt
    ```
 
 3. Run the application:
    ```
-   python htq-doblot.py
+   python3 htq-dotblot.py
    ```
 
 ## Usage Tutorial
