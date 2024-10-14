@@ -34,17 +34,22 @@ For the experimental protocol, please refer to the paper.
 ### Python3 and python virtual environment
 
    Open a terminal and check which version of python is installed by running the command:
-   ```python --version```
+   ```
+   python --version
+   ```
 
    To install python3 on your computer, follow the instructions from the [python beginner's guide](https://wiki.python.org/moin/BeginnersGuide/Download)
    
    (Recommended) Create a python virtual environment to install all the dependencies required for the app. 
    In the terminal run:
-   ```python3 -m venv htq-dotblot```
+   ```
+   python3 -m venv htq-dotblot
+```
    
    Activate the new environment:
-   ```source htq-dotblot/bin/activate```
-   
+   ```
+   source htq-dotblot/bin/activate
+   ```
 
 ### Prerequisites
 
